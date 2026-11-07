@@ -62,3 +62,8 @@ wheels/
 out/
 .cache/
 *.enc
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+Cargo.lock

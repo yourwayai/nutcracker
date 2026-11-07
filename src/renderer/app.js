@@ -5,7 +5,7 @@
 
 const API_BASE = '';  // same origin
 
-// ─── API layer ────────────────────────────────────────────────────────────────
+// ─── Dual Tauri & HTTP Bridge ────────────────────────────────────────────────
 const api = {
   async post(path, body = {}) {
     const res = await fetch(API_BASE + path, {
@@ -21,13 +21,105 @@ const api = {
   },
 };
 
+function getTauriInvoke() {
+  if (typeof window !== 'undefined') {
+    if (window.__TAURI__?.core?.invoke) return window.__TAURI__.core.invoke;
+    if (window.__TAURI__?.invoke) return window.__TAURI__.invoke;
+    if (window.__TAURI_INTERNALS__?.invoke) return window.__TAURI_INTERNALS__.invoke;
+  }
+  return null;
+}
+
 const vault = {
-  exists:         ()                    => api.post('/api/vault/exists'),
-  create:         (pw)                  => api.post('/api/vault/create',          { password: pw }),
-  unlock:         (pw)                  => api.post('/api/vault/unlock',          { password: pw }),
-  save:           (pw, data)            => api.post('/api/vault/save',            { password: pw, data }),
-  changePassword: (oldPw, newPw)        => api.post('/api/vault/change_password', { old_password: oldPw, new_password: newPw }),
-  export:         (pw, path)            => api.post('/api/vault/export',          { password: pw, path }),
+  async exists() {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        const exists = await inv('vault_exists');
+        return { ok: true, exists: Boolean(exists) };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    }
+    return api.post('/api/vault/exists');
+  },
+  async create(pw) {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        await inv('create_vault', { password: pw });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    }
+    return api.post('/api/vault/create', { password: pw });
+  },
+  async unlock(pw) {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        const data = await inv('unlock_vault', { password: pw });
+        return { ok: true, data };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    }
+    return api.post('/api/vault/unlock', { password: pw });
+  },
+  async save(pw, data) {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        await inv('save_vault', { password: pw, data });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    }
+    return api.post('/api/vault/save', { password: pw, data });
+  },
+  async changePassword(oldPw, newPw) {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        await inv('change_password', {
+          oldPassword: oldPw,
+          old_password: oldPw,
+          newPassword: newPw,
+          new_password: newPw,
+        });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    }
+    return api.post('/api/vault/change_password', { old_password: oldPw, new_password: newPw });
+  },
+  async export(pw, path) {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        await inv('export_vault', { password: pw, path: path || null });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: String(e) };
+      }
+    }
+    return api.post('/api/vault/export', { password: pw, path });
+  },
+  async getPath() {
+    const inv = getTauriInvoke();
+    if (inv) {
+      try {
+        return await inv('get_vault_path');
+      } catch {
+        return '—';
+      }
+    }
+    const res = await api.get('/api/status').catch(() => ({}));
+    return res.vault_path || '—';
+  },
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -468,8 +560,8 @@ document.getElementById('btn-export').addEventListener('click', async () => {
 });
 
 async function loadVaultPath() {
-  const res = await api.get('/api/status');
-  document.getElementById('vault-path-display').textContent = res.vault_path || '—';
+  const p = await vault.getPath();
+  document.getElementById('vault-path-display').textContent = p || '—';
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

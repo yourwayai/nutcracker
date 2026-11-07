@@ -1,35 +1,44 @@
 # Nutcracker 🔐
 
-A lightweight, secure desktop API key manager for macOS.
+A lightweight, secure native desktop API key manager built with **Tauri v2 + Rust**.
 
-## Features
+## Architecture & Features
 
-- **Robust Encryption**: AES-256-GCM authenticated encryption with PBKDF2-SHA256 key derivation (310,000 iterations).
-- **Zero Cloud Dependence**: Everything is stored locally in `~/.nutcracker/vault.enc` with strict file permissions (`0600`).
-- **Clean Modern UI**: Dark-themed responsive interface with platform categories, fast search, masked values, and one-click clipboard copying.
-- **Vault Management**: Change master password anytime, re-encrypting all entries, or export your vault to JSON.
-- **Zero Node/Electron Dependency**: Runs with standard macOS Python 3 + `cryptography`, launching directly in a native desktop app window.
+- **Tauri v2 Native Desktop App**:
+  - Native macOS WKWebView window (no Chromium overhead).
+  - Native binary with tiny memory footprint (~30MB) and instant startup.
+  - Rust backend handling cryptographic operations directly with memory safety.
+- **Robust Encryption**:
+  - **AES-256-GCM** authenticated encryption.
+  - **PBKDF2-SHA256** key derivation (310,000 iterations).
+  - Local vault stored at `~/.nutcracker/vault.enc` with strict POSIX permissions (`0600`) and atomic replace.
+- **Clean Modern Dark UI**:
+  - Platform categorization (OpenAI, Anthropic, AWS, GitHub, etc.).
+  - Instant search & filtering.
+  - Masked values with one-click clipboard copying.
+  - Master password modification & JSON export.
+- **Dual Runtime Support**:
+  - Runs natively via **Tauri (Rust)** desktop window.
+  - Seamless fallback to local Python server if needed.
 
 ## Quick Start
 
 ### 1. Launch
 
-You can launch Nutcracker in any of the following ways:
+You can launch Nutcracker via:
 
 ```bash
-# Option A: Run the launcher script
+# Option A: Run the launcher script (automatically runs native Tauri release binary)
 ./run.sh
 
-# Option B: Run via Python directly
-python3 src/server.py
+# Option B: Run via Cargo directly
+cargo run --release --manifest-path src-tauri/Cargo.toml
 
 # Option C: In Finder, double-click Nutcracker.command
 ```
 
-Nutcracker will automatically launch in Chrome/Brave app mode (or your default browser) at `http://localhost:17432`.
-
 ### 2. First Run
 
 - On initial startup, set your **Master Password** (minimum 8 characters).
-- Once unlocked, add and categorize your API keys (e.g., OpenAI, Anthropic, AWS, GitHub).
-- Use **Lock Vault** or close the window when done.
+- Add and categorize your API keys.
+- Click **Lock Vault** or close the app when done.
