@@ -2,10 +2,9 @@
   "name": "nutcracker",
   "version": "1.0.0",
   "description": "API Key Manager - Securely manage your platform API keys",
-  "main": "src/main.js",
+  "main": "src/server.py",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev"
+    "start": "python3 src/server.py"
   },
   "keywords": [
     "api",
@@ -14,8 +13,5 @@
     "security"
   ],
   "author": "milong",
-  "license": "MIT",
-  "devDependencies": {
-    "electron": "^45.2.3"
-  }
+  "license": "MIT"
 }

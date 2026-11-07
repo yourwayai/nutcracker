@@ -1,17 +1,41 @@
 /* ═══════════════════════════════════════════════
-   Nutcracker — Renderer App Logic
+   Nutcracker — Renderer App Logic (HTTP API mode)
    ═══════════════════════════════════════════════ */
 'use strict';
 
+const API_BASE = '';  // same origin
+
+// ─── API layer ────────────────────────────────────────────────────────────────
+const api = {
+  async post(path, body = {}) {
+    const res = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  },
+  async get(path) {
+    const res = await fetch(API_BASE + path);
+    return res.json();
+  },
+};
+
+const vault = {
+  exists:         ()                    => api.post('/api/vault/exists'),
+  create:         (pw)                  => api.post('/api/vault/create',          { password: pw }),
+  unlock:         (pw)                  => api.post('/api/vault/unlock',          { password: pw }),
+  save:           (pw, data)            => api.post('/api/vault/save',            { password: pw, data }),
+  changePassword: (oldPw, newPw)        => api.post('/api/vault/change_password', { old_password: oldPw, new_password: newPw }),
+  export:         (pw, path)            => api.post('/api/vault/export',          { password: pw, path }),
+};
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let masterPassword = null;
-let vaultData = { entries: [] };   // { entries: Entry[] }
+let vaultData = { entries: [] };
 let activeCategory = '__all__';
-let editingId = null;              // id of the entry being edited
-let viewingId = null;              // id of the entry being viewed
-
-// ─── Entry schema ─────────────────────────────────────────────────────────────
-// { id, platform, category, label, value, notes, createdAt }
+let editingId = null;
+let viewingId = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function uuid() {
@@ -75,7 +99,6 @@ document.querySelectorAll('.eye-btn[data-target]').forEach(btn => {
   });
 });
 
-// Master password eye
 document.getElementById('toggle-pw').addEventListener('click', () => {
   const input = document.getElementById('master-pw');
   input.type = input.type === 'password' ? 'text' : 'password';
@@ -83,7 +106,8 @@ document.getElementById('toggle-pw').addEventListener('click', () => {
 
 // ─── Auth flow ─────────────────────────────────────────────────────────────────
 async function initAuth() {
-  const exists = await window.nutcracker.vault.exists();
+  const res = await vault.exists();
+  const exists = res.exists;
   if (exists) {
     document.getElementById('auth-title').textContent = 'Unlock Vault';
     document.getElementById('auth-subtitle').textContent = 'Enter your master password to access your API keys.';
@@ -91,38 +115,31 @@ async function initAuth() {
     document.getElementById('confirm-pw-group').style.display = 'none';
   } else {
     document.getElementById('auth-title').textContent = 'Create Vault';
-    document.getElementById('auth-subtitle').textContent = 'Set a master password to protect your API keys. Don\'t forget it — there\'s no recovery.';
+    document.getElementById('auth-subtitle').textContent = "Set a master password to protect your API keys. Don't forget it — there's no recovery.";
     document.getElementById('auth-btn-text').textContent = 'Create Vault';
     document.getElementById('confirm-pw-group').style.display = '';
   }
 }
 
 document.getElementById('auth-submit').addEventListener('click', handleAuth);
-document.getElementById('master-pw').addEventListener('keydown', e => {
-  if (e.key === 'Enter') handleAuth();
-});
-document.getElementById('confirm-pw').addEventListener('keydown', e => {
-  if (e.key === 'Enter') handleAuth();
-});
+document.getElementById('master-pw').addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth(); });
+document.getElementById('confirm-pw').addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth(); });
 
 async function handleAuth() {
   const pw = document.getElementById('master-pw').value.trim();
   const errEl = document.getElementById('auth-error');
   errEl.textContent = '';
-
   if (!pw) { errEl.textContent = 'Please enter your master password.'; return; }
 
-  const exists = await window.nutcracker.vault.exists();
+  const existsRes = await vault.exists();
+  const exists = existsRes.exists;
+
   const btn = document.getElementById('auth-submit');
   const spinner = document.getElementById('auth-spinner');
   const btnText = document.getElementById('auth-btn-text');
-
-  btn.disabled = true;
-  spinner.style.display = 'inline-block';
-  btnText.style.display = 'none';
+  btn.disabled = true; spinner.style.display = 'inline-block'; btnText.style.display = 'none';
 
   if (!exists) {
-    // Create flow
     const confirm = document.getElementById('confirm-pw').value.trim();
     if (pw.length < 8) {
       errEl.textContent = 'Password must be at least 8 characters.';
@@ -134,7 +151,7 @@ async function handleAuth() {
       btn.disabled = false; spinner.style.display = 'none'; btnText.style.display = '';
       return;
     }
-    const res = await window.nutcracker.vault.create(pw);
+    const res = await vault.create(pw);
     if (!res.ok) {
       errEl.textContent = res.error;
       btn.disabled = false; spinner.style.display = 'none'; btnText.style.display = '';
@@ -143,8 +160,7 @@ async function handleAuth() {
     masterPassword = pw;
     vaultData = { entries: [] };
   } else {
-    // Unlock flow
-    const res = await window.nutcracker.vault.unlock(pw);
+    const res = await vault.unlock(pw);
     if (!res.ok) {
       errEl.textContent = res.error;
       btn.disabled = false; spinner.style.display = 'none'; btnText.style.display = '';
@@ -178,13 +194,9 @@ function lockVault() {
 
 document.getElementById('btn-lock').addEventListener('click', lockVault);
 
-// ─── Save vault ────────────────────────────────────────────────────────────────
 async function saveVault() {
-  const res = await window.nutcracker.vault.save(masterPassword, vaultData);
-  if (!res.ok) {
-    showToast('Save failed: ' + res.error, 'error');
-    return false;
-  }
+  const res = await vault.save(masterPassword, vaultData);
+  if (!res.ok) { showToast('Save failed: ' + res.error, 'error'); return false; }
   return true;
 }
 
@@ -213,15 +225,10 @@ function renderCategories() {
     const li = document.createElement('li');
     li.className = activeCategory === name ? 'active' : '';
     li.innerHTML = `<span>${escHtml(name)}</span><span class="cat-count">${count}</span>`;
-    li.addEventListener('click', () => {
-      activeCategory = name;
-      renderCategories();
-      renderKeys();
-    });
+    li.addEventListener('click', () => { activeCategory = name; renderCategories(); renderKeys(); });
     list.appendChild(li);
   });
 
-  // Update datalist suggestions in modal
   const dl = document.getElementById('category-suggestions');
   dl.innerHTML = '';
   cats.forEach((_, name) => {
@@ -250,17 +257,11 @@ function renderKeys() {
   const emptyState = document.getElementById('empty-state');
   const entries = getFilteredEntries();
 
-  document.getElementById('view-title').textContent =
-    activeCategory === '__all__' ? 'All Keys' : activeCategory;
-  document.getElementById('key-count').textContent =
-    `${entries.length} key${entries.length !== 1 ? 's' : ''}`;
+  document.getElementById('view-title').textContent = activeCategory === '__all__' ? 'All Keys' : activeCategory;
+  document.getElementById('key-count').textContent = `${entries.length} key${entries.length !== 1 ? 's' : ''}`;
 
   grid.innerHTML = '';
-
-  if (entries.length === 0) {
-    emptyState.style.display = 'flex';
-    return;
-  }
+  if (entries.length === 0) { emptyState.style.display = 'flex'; return; }
   emptyState.style.display = 'none';
 
   entries.forEach(entry => {
@@ -329,9 +330,7 @@ function viewKey(id) {
   document.getElementById('view-key-val').textContent = maskKey(entry.value);
   document.getElementById('view-toggle-key').textContent = 'Show';
   document.getElementById('view-notes-val').textContent = entry.notes || '—';
-  document.getElementById('view-notes-row').style.display = '';
   document.getElementById('view-date-val').textContent = formatDate(entry.createdAt);
-
   openModal('modal-view');
 }
 
@@ -360,7 +359,7 @@ document.getElementById('btn-delete-key').addEventListener('click', () => {
   openModal('modal-confirm');
 });
 
-// ─── Add / Edit Key ────────────────────────────────────────────────────────────
+// ─── Add / Edit ────────────────────────────────────────────────────────────────
 document.getElementById('btn-add').addEventListener('click', () => {
   editingId = null;
   document.getElementById('modal-key-title').textContent = 'Add API Key';
@@ -391,20 +390,18 @@ function editKey(id) {
 document.getElementById('btn-save-key').addEventListener('click', async () => {
   const platform = document.getElementById('key-platform').value.trim();
   const category = document.getElementById('key-category').value.trim();
-  const label = document.getElementById('key-label').value.trim();
-  const value = document.getElementById('key-value').value.trim();
-  const notes = document.getElementById('key-notes').value.trim();
-  const errEl = document.getElementById('modal-key-error');
+  const label    = document.getElementById('key-label').value.trim();
+  const value    = document.getElementById('key-value').value.trim();
+  const notes    = document.getElementById('key-notes').value.trim();
+  const errEl    = document.getElementById('modal-key-error');
 
   if (!platform) { errEl.textContent = 'Platform name is required.'; return; }
-  if (!value) { errEl.textContent = 'API key value is required.'; return; }
+  if (!value)    { errEl.textContent = 'API key value is required.'; return; }
   errEl.textContent = '';
 
   if (editingId) {
     const idx = vaultData.entries.findIndex(e => e.id === editingId);
-    if (idx !== -1) {
-      vaultData.entries[idx] = { ...vaultData.entries[idx], platform, category, label, value, notes };
-    }
+    if (idx !== -1) vaultData.entries[idx] = { ...vaultData.entries[idx], platform, category, label, value, notes };
   } else {
     vaultData.entries.push({ id: uuid(), platform, category, label, value, notes, createdAt: new Date().toISOString() });
   }
@@ -440,17 +437,17 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 });
 
 document.getElementById('btn-change-pw').addEventListener('click', async () => {
-  const oldPw = document.getElementById('old-pw').value;
-  const newPw = document.getElementById('new-pw').value;
+  const oldPw   = document.getElementById('old-pw').value;
+  const newPw   = document.getElementById('new-pw').value;
   const confirmPw = document.getElementById('new-pw-confirm').value;
-  const errEl = document.getElementById('settings-error');
+  const errEl   = document.getElementById('settings-error');
 
   if (!oldPw || !newPw) { errEl.textContent = 'All fields are required.'; return; }
   if (newPw.length < 8) { errEl.textContent = 'New password must be at least 8 characters.'; return; }
   if (newPw !== confirmPw) { errEl.textContent = 'New passwords do not match.'; return; }
   errEl.textContent = '';
 
-  const res = await window.nutcracker.vault.changePassword(oldPw, newPw);
+  const res = await vault.changePassword(oldPw, newPw);
   if (!res.ok) { errEl.textContent = res.error; return; }
 
   masterPassword = newPw;
@@ -459,17 +456,20 @@ document.getElementById('btn-change-pw').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-export').addEventListener('click', async () => {
-  const res = await window.nutcracker.vault.export(masterPassword);
+  const dest = prompt('Export path (leave blank for ~/nutcracker-export.json):');
+  if (dest === null) return; // cancelled
+  const exportPath = dest.trim() || undefined;
+  const res = await vault.export(masterPassword, exportPath);
   if (res.ok) {
-    showToast('Exported successfully.', 'success');
+    showToast('Exported successfully to ' + (exportPath || '~/nutcracker-export.json'), 'success');
   } else if (res.error !== 'Cancelled') {
     showToast('Export failed: ' + res.error, 'error');
   }
 });
 
 async function loadVaultPath() {
-  const p = await window.nutcracker.app.getVaultPath();
-  document.getElementById('vault-path-display').textContent = p;
+  const res = await api.get('/api/status');
+  document.getElementById('vault-path-display').textContent = res.vault_path || '—';
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
