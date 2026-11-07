@@ -5,6 +5,11 @@
   <p><em>"Like the nutcracker bird caching thousands of seeds across the wild, Nutcracker securely stores, encrypts, and retrieves all your API keys with absolute precision."</em></p>
 
   <p>
+    <a href="README.md">English</a> •
+    <a href="README_CN.md">简体中文</a>
+  </p>
+
+  <p>
     <img src="https://img.shields.io/badge/Platforms-macOS%20%7C%20Linux-blue?style=flat-square" alt="Platforms" />
     <img src="https://img.shields.io/badge/Architecture-Tauri%20v2%20%2B%20Rust-orange?style=flat-square" alt="Architecture" />
     <img src="https://img.shields.io/badge/Encryption-AES--256--GCM-green?style=flat-square" alt="Encryption" />
