@@ -57,3 +57,8 @@ wheels/
 .env
 .env.local
 .env.*.local
+
+# Electron
+out/
+.cache/
+*.enc

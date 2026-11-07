@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nutcracker — API Key Manager</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══════════════════ AUTH SCREEN ══════════════════ -->
+  <div id="screen-auth" class="screen active">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="12" fill="#6C63FF"/>
+          <path d="M24 10C17.37 10 12 15.37 12 22c0 4.5 2.4 8.44 6 10.6V34h12v-1.4c3.6-2.16 6-6.1 6-10.6 0-6.63-5.37-12-12-12zm0 4a8 8 0 018 8c0 2.95-1.6 5.53-4 6.93V30H20v-1.07C17.6 27.53 16 24.95 16 22a8 8 0 018-8z" fill="white"/>
+          <rect x="20" y="34" width="8" height="4" rx="2" fill="white"/>
+        </svg>
+      </div>
+      <h1 class="auth-title" id="auth-title">Unlock Vault</h1>
+      <p class="auth-subtitle" id="auth-subtitle">Enter your master password to access your API keys.</p>
+
+      <div class="form-group">
+        <label for="master-pw">Master Password</label>
+        <div class="input-wrap">
+          <input type="password" id="master-pw" placeholder="Enter master password" autocomplete="current-password" />
+          <button class="eye-btn" id="toggle-pw" title="Show/hide">
+            <svg id="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-group" id="confirm-pw-group" style="display:none">
+        <label for="confirm-pw">Confirm Password</label>
+        <div class="input-wrap">
+          <input type="password" id="confirm-pw" placeholder="Confirm master password" />
+        </div>
+      </div>
+
+      <div class="auth-error" id="auth-error"></div>
+
+      <button class="btn btn-primary btn-full" id="auth-submit">
+        <span id="auth-btn-text">Unlock</span>
+        <span class="spinner" id="auth-spinner" style="display:none"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════════════ MAIN APP ══════════════════ -->
+  <div id="screen-app" class="screen">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <svg width="22" height="22" viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="12" fill="#6C63FF"/>
+          <path d="M24 10C17.37 10 12 15.37 12 22c0 4.5 2.4 8.44 6 10.6V34h12v-1.4c3.6-2.16 6-6.1 6-10.6 0-6.63-5.37-12-12-12zm0 4a8 8 0 018 8c0 2.95-1.6 5.53-4 6.93V30H20v-1.07C17.6 27.53 16 24.95 16 22a8 8 0 018-8z" fill="white"/>
+          <rect x="20" y="34" width="8" height="4" rx="2" fill="white"/>
+        </svg>
+        <span class="sidebar-title">Nutcracker</span>
+      </div>
+
+      <div class="sidebar-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search…" />
+      </div>
+
+      <div class="sidebar-section">
+        <span class="sidebar-section-label">Categories</span>
+        <ul class="category-list" id="category-list"></ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="icon-btn" id="btn-lock" title="Lock vault">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0110 0v4"/>
+          </svg>
+          Lock
+        </button>
+        <button class="icon-btn" id="btn-settings" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+          Settings
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <div class="main-header">
+        <div>
+          <h2 id="view-title">All Keys</h2>
+          <span class="key-count" id="key-count">0 keys</span>
+        </div>
+        <button class="btn btn-primary" id="btn-add">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add Key
+        </button>
+      </div>
+
+      <div class="key-grid" id="key-grid">
+        <!-- Key cards rendered here -->
+      </div>
+
+      <div class="empty-state" id="empty-state" style="display:none">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="1.2">
+          <path d="M21 2H3a1 1 0 00-1 1v18a1 1 0 001 1h18a1 1 0 001-1V3a1 1 0 00-1-1z"/>
+          <path d="M12 8v4M12 16h.01"/>
+        </svg>
+        <p>No API keys yet.<br>Click <strong>Add Key</strong> to get started.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- ══════════════════ MODALS ══════════════════ -->
+
+  <!-- Add / Edit Key Modal -->
+  <div class="modal-overlay" id="modal-key" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-key-title">Add API Key</h3>
+        <button class="close-btn" data-modal="modal-key">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Platform / Service *</label>
+            <input type="text" id="key-platform" placeholder="e.g. OpenAI, Stripe, AWS" />
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <input type="text" id="key-category" placeholder="e.g. AI, Payment, Cloud" list="category-suggestions"/>
+            <datalist id="category-suggestions"></datalist>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Label / Name</label>
+          <input type="text" id="key-label" placeholder="e.g. Production key, Personal account" />
+        </div>
+        <div class="form-group">
+          <label>API Key *</label>
+          <div class="input-wrap">
+            <input type="password" id="key-value" placeholder="Paste your API key here" class="mono" />
+            <button class="eye-btn" data-target="key-value" title="Show/hide key">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="key-notes" rows="3" placeholder="Any additional notes…"></textarea>
+        </div>
+        <div class="modal-error" id="modal-key-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-modal="modal-key">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-key">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- View Key Modal -->
+  <div class="modal-overlay" id="modal-view" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="view-platform"></h3>
+        <button class="close-btn" data-modal="modal-view">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row">
+          <span class="detail-label">Platform</span>
+          <span class="detail-value" id="view-platform-val"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Category</span>
+          <span class="detail-value" id="view-category-val"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Label</span>
+          <span class="detail-value" id="view-label-val"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">API Key</span>
+          <div class="key-reveal-wrap">
+            <span class="detail-value mono" id="view-key-val">••••••••••••••••••••</span>
+            <button class="btn btn-ghost btn-sm" id="view-toggle-key">Show</button>
+            <button class="btn btn-ghost btn-sm" id="view-copy-key">Copy</button>
+          </div>
+        </div>
+        <div class="detail-row" id="view-notes-row">
+          <span class="detail-label">Notes</span>
+          <span class="detail-value" id="view-notes-val"></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Added</span>
+          <span class="detail-value" id="view-date-val"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="btn-delete-key">Delete</button>
+        <button class="btn btn-ghost" data-modal="modal-view">Close</button>
+        <button class="btn btn-primary" id="btn-edit-key">Edit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="modal-settings" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="close-btn" data-modal="modal-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h4>Change Master Password</h4>
+          <div class="form-group">
+            <label>Current Password</label>
+            <input type="password" id="old-pw" placeholder="Current master password" />
+          </div>
+          <div class="form-group">
+            <label>New Password</label>
+            <input type="password" id="new-pw" placeholder="New master password" />
+          </div>
+          <div class="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" id="new-pw-confirm" placeholder="Confirm new password" />
+          </div>
+          <div class="modal-error" id="settings-error"></div>
+          <button class="btn btn-primary" id="btn-change-pw">Change Password</button>
+        </div>
+        <hr class="divider" />
+        <div class="settings-section">
+          <h4>Export</h4>
+          <p class="settings-desc">Export all your API keys as a plain JSON file. Keep this file secure!</p>
+          <button class="btn btn-ghost" id="btn-export">Export as JSON…</button>
+        </div>
+        <hr class="divider" />
+        <div class="settings-section">
+          <h4>Vault Location</h4>
+          <p class="settings-desc mono small" id="vault-path-display">—</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirm -->
+  <div class="modal-overlay" id="modal-confirm" style="display:none">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Delete Key?</h3>
+        <button class="close-btn" data-modal="modal-confirm">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete <strong id="confirm-key-name"></strong>. This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-modal="modal-confirm">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-delete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
