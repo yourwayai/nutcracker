@@ -29,11 +29,11 @@ except ImportError:
     CRYPTO_OK = False
 
 # ── Constants ──────────────────────────────────────────────────────────────────
-VAULT_DIR  = Path.home() / '.nutcracker'
-VAULT_FILE = VAULT_DIR / 'vault.enc'
+VAULT_DIR  = Path(os.environ.get('NUTCRACKER_VAULT_DIR', str(Path.home() / '.nutcracker')))
+VAULT_FILE = Path(os.environ.get('NUTCRACKER_VAULT_FILE', str(VAULT_DIR / 'vault.enc')))
 SALT_BYTES = 32
 PBKDF2_ITERS = 310_000
-PORT = 17432  # fixed local port
+PORT = int(os.environ.get('NUTCRACKER_PORT', '17432'))  # default local port
 
 # ── Crypto ─────────────────────────────────────────────────────────────────────
 def derive_key(password: str, salt: bytes) -> bytes:
@@ -83,7 +83,7 @@ def unlock_vault(password: str) -> dict:
         data = json.loads(text)
         return {'ok': True, 'data': data}
     except Exception:
-        return {'ok': False, 'error': 'Wrong password or corrupted vault.'}
+        return {'ok': False, 'error': 'Wrong master password or corrupted vault.'}
 
 def save_vault(password: str, data: dict) -> dict:
     try:
@@ -275,7 +275,8 @@ def main():
     print(f'🔐 Nutcracker running at http://localhost:{PORT}')
     print('   Press Ctrl+C to quit.')
 
-    threading.Thread(target=open_browser, daemon=True).start()
+    if not os.environ.get('NUTCRACKER_NO_BROWSER'):
+        threading.Thread(target=open_browser, daemon=True).start()
 
     try:
         server.serve_forever()

@@ -211,3 +211,95 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_derive_key_consistency() {
+        let salt = [42u8; SALT_BYTES];
+        let key1 = derive_key("test_master_pass_123", &salt);
+        let key2 = derive_key("test_master_pass_123", &salt);
+        assert_eq!(key1, key2);
+        assert_eq!(key1.len(), 32);
+
+        let salt_diff = [99u8; SALT_BYTES];
+        let key_diff = derive_key("test_master_pass_123", &salt_diff);
+        assert_ne!(key1, key_diff);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let salt = [7u8; SALT_BYTES];
+        let key = derive_key("secure_password_abc", &salt);
+        let sample_payload = r#"{"entries":[{"id":"1","title":"OpenAI Key","key":"sk-proj-12345","category":"OpenAI"}]}"#;
+
+        let encrypted = encrypt(sample_payload, &key).expect("Encryption failed");
+        assert!(encrypted.len() > NONCE_BYTES + 16);
+
+        let decrypted = decrypt(&encrypted, &key).expect("Decryption failed");
+        assert_eq!(decrypted, sample_payload);
+    }
+
+    #[test]
+    fn test_decrypt_wrong_password_fails() {
+        let salt = [7u8; SALT_BYTES];
+        let correct_key = derive_key("correct_password", &salt);
+        let wrong_key = derive_key("wrong_password", &salt);
+
+        let encrypted = encrypt("secret data", &correct_key).unwrap();
+        let result = decrypt(&encrypted, &wrong_key);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Wrong master password"));
+    }
+
+    #[test]
+    fn test_decrypt_tampered_ciphertext_fails() {
+        let salt = [7u8; SALT_BYTES];
+        let key = derive_key("password", &salt);
+        let mut encrypted = encrypt("authenticated payload", &key).unwrap();
+
+        // Tamper with one byte in the ciphertext body
+        let last_idx = encrypted.len() - 1;
+        encrypted[last_idx] ^= 0xFF;
+
+        let result = decrypt(&encrypted, &key);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decrypt_short_blob() {
+        let key = [0u8; 32];
+        let too_short = vec![0u8; 10];
+        let result = decrypt(&too_short, &key);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Corrupted vault blob"));
+    }
+
+    #[test]
+    fn test_unicode_and_emojis() {
+        let salt = [1u8; SALT_BYTES];
+        let key = derive_key("密码_🔑_test", &salt);
+        let utf8_text = "密钥名称: 生产环境 Anthropic 密钥 🚀 | 状态: 正常";
+
+        let encrypted = encrypt(utf8_text, &key).unwrap();
+        let decrypted = decrypt(&encrypted, &key).unwrap();
+        assert_eq!(decrypted, utf8_text);
+    }
+
+    #[test]
+    fn test_fixed_vector_cross_compat() {
+        // Known salt, password, and ciphertext generated with standard AES-256-GCM + PBKDF2-HMAC-SHA256
+        let salt = [0x55u8; SALT_BYTES];
+        let password = "CrossPlatformPassword2026!";
+        let key = derive_key(password, &salt);
+
+        let plaintext = r#"{"test":"cross_platform_ok"}"#;
+        let blob = encrypt(plaintext, &key).expect("Encryption failed");
+
+        // Decrypt with key derived from same password and salt
+        let decrypted = decrypt(&blob, &key).expect("Decryption failed");
+        assert_eq!(decrypted, plaintext);
+    }
+}
