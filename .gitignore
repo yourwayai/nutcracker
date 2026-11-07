@@ -67,3 +67,7 @@ out/
 src-tauri/target/
 src-tauri/gen/
 Cargo.lock
+
+# Build artifacts
+Nutcracker.app/
+dist/
