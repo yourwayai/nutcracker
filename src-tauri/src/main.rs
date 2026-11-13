@@ -17,6 +17,18 @@ const NONCE_BYTES: usize = 12;
 const PBKDF2_ITERS: u32 = 310_000;
 
 fn get_vault_file_path() -> Result<PathBuf, String> {
+    if let Ok(file_path) = std::env::var("NUTCRACKER_VAULT_FILE") {
+        let trimmed = file_path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+    if let Ok(dir_path) = std::env::var("NUTCRACKER_VAULT_DIR") {
+        let trimmed = dir_path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed).join("vault.enc"));
+        }
+    }
     dirs::home_dir()
         .map(|h| h.join(".nutcracker").join("vault.enc"))
         .ok_or_else(|| "Could not determine user home directory".to_string())
@@ -301,5 +313,38 @@ mod tests {
         // Decrypt with key derived from same password and salt
         let decrypted = decrypt(&blob, &key).expect("Decryption failed");
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_vault_path_env_overrides() {
+        let original_file = std::env::var("NUTCRACKER_VAULT_FILE").ok();
+        let original_dir = std::env::var("NUTCRACKER_VAULT_DIR").ok();
+
+        // 1. Test NUTCRACKER_VAULT_FILE override
+        std::env::set_var("NUTCRACKER_VAULT_FILE", "/tmp/custom_test_vault/test.enc");
+        assert_eq!(
+            get_vault_file_path().unwrap(),
+            PathBuf::from("/tmp/custom_test_vault/test.enc")
+        );
+
+        // 2. Test NUTCRACKER_VAULT_DIR override when file not set
+        std::env::remove_var("NUTCRACKER_VAULT_FILE");
+        std::env::set_var("NUTCRACKER_VAULT_DIR", "/tmp/custom_test_dir");
+        assert_eq!(
+            get_vault_file_path().unwrap(),
+            PathBuf::from("/tmp/custom_test_dir/vault.enc")
+        );
+
+        // Restore original environment
+        if let Some(val) = original_file {
+            std::env::set_var("NUTCRACKER_VAULT_FILE", val);
+        } else {
+            std::env::remove_var("NUTCRACKER_VAULT_FILE");
+        }
+        if let Some(val) = original_dir {
+            std::env::set_var("NUTCRACKER_VAULT_DIR", val);
+        } else {
+            std::env::remove_var("NUTCRACKER_VAULT_DIR");
+        }
     }
 }

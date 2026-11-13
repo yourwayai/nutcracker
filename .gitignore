@@ -71,3 +71,7 @@ Cargo.lock
 # Build artifacts
 Nutcracker.app/
 dist/
+
+# Agent skills
+.agents/
+skills-lock.json

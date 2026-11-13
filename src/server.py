@@ -28,12 +28,25 @@ try:
 except ImportError:
     CRYPTO_OK = False
 
-# ── Constants ──────────────────────────────────────────────────────────────────
-VAULT_DIR  = Path(os.environ.get('NUTCRACKER_VAULT_DIR', str(Path.home() / '.nutcracker')))
-VAULT_FILE = Path(os.environ.get('NUTCRACKER_VAULT_FILE', str(VAULT_DIR / 'vault.enc')))
+# ── Dynamic Configuration Helpers ──────────────────────────────────────────────
+def get_vault_dir() -> Path:
+    return Path(os.environ.get('NUTCRACKER_VAULT_DIR', str(Path.home() / '.nutcracker')))
+
+def get_vault_file() -> Path:
+    env_file = os.environ.get('NUTCRACKER_VAULT_FILE', '').strip()
+    if env_file:
+        return Path(env_file)
+    return get_vault_dir() / 'vault.enc'
+
+def get_configured_port() -> int:
+    return int(os.environ.get('NUTCRACKER_PORT', '17432'))
+
+# Backward compatibility attributes (module-level defaults)
+VAULT_DIR  = get_vault_dir()
+VAULT_FILE = get_vault_file()
 SALT_BYTES = 32
 PBKDF2_ITERS = 310_000
-PORT = int(os.environ.get('NUTCRACKER_PORT', '17432'))  # default local port
+PORT = get_configured_port()
 
 # ── Crypto ─────────────────────────────────────────────────────────────────────
 def derive_key(password: str, salt: bytes) -> bytes:
@@ -56,14 +69,16 @@ def decrypt(blob: bytes, key: bytes) -> str:
 
 # ── Vault helpers ──────────────────────────────────────────────────────────────
 def vault_exists() -> bool:
-    return VAULT_FILE.exists()
+    return get_vault_file().exists()
 
 def _write_vault_bytes(blob: bytes):
-    VAULT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    tmp_file = VAULT_DIR / f'vault.enc.tmp.{secrets.token_hex(4)}'
+    v_dir = get_vault_dir()
+    v_file = get_vault_file()
+    v_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    tmp_file = v_dir / f'vault.enc.tmp.{secrets.token_hex(4)}'
     tmp_file.write_bytes(blob)
     tmp_file.chmod(0o600)
-    tmp_file.replace(VAULT_FILE)
+    tmp_file.replace(v_file)
 
 def create_vault(password: str) -> dict:
     salt = secrets.token_bytes(SALT_BYTES)
@@ -75,7 +90,7 @@ def create_vault(password: str) -> dict:
 
 def unlock_vault(password: str) -> dict:
     try:
-        raw  = VAULT_FILE.read_bytes()
+        raw  = get_vault_file().read_bytes()
         salt = raw[:SALT_BYTES]
         blob = raw[SALT_BYTES:]
         key  = derive_key(password, salt)
@@ -87,7 +102,7 @@ def unlock_vault(password: str) -> dict:
 
 def save_vault(password: str, data: dict) -> dict:
     try:
-        raw  = VAULT_FILE.read_bytes()
+        raw  = get_vault_file().read_bytes()
         salt = raw[:SALT_BYTES]
         key  = derive_key(password, salt)
         text = json.dumps(data)
@@ -99,7 +114,7 @@ def save_vault(password: str, data: dict) -> dict:
 
 def change_password(old_pw: str, new_pw: str) -> dict:
     try:
-        raw     = VAULT_FILE.read_bytes()
+        raw     = get_vault_file().read_bytes()
         old_salt = raw[:SALT_BYTES]
         blob    = raw[SALT_BYTES:]
         old_key = derive_key(old_pw, old_salt)
@@ -113,7 +128,7 @@ def change_password(old_pw: str, new_pw: str) -> dict:
 
 def export_vault(password: str, export_path: str) -> dict:
     try:
-        raw  = VAULT_FILE.read_bytes()
+        raw  = get_vault_file().read_bytes()
         salt = raw[:SALT_BYTES]
         blob = raw[SALT_BYTES:]
         key  = derive_key(password, salt)
@@ -134,10 +149,11 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
 
     def send_json(self, data, code=200):
         body = json.dumps(data).encode('utf-8')
+        port = self.server.server_address[1] if hasattr(self, 'server') and hasattr(self.server, 'server_address') else get_configured_port()
         self.send_response(code)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
-        self.send_header('Access-Control-Allow-Origin', f'http://localhost:{PORT}')
+        self.send_header('Access-Control-Allow-Origin', f'http://localhost:{port}')
         self.end_headers()
         self.wfile.write(body)
 
@@ -177,10 +193,12 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
         elif path.endswith('.js'):
             self.send_static(STATIC_DIR / path)
         elif path == 'api/status':
+            actual_port = self.server.server_address[1] if hasattr(self, 'server') and hasattr(self.server, 'server_address') else get_configured_port()
             self.send_json({
                 'vault_exists': vault_exists(),
-                'vault_path': str(VAULT_FILE),
+                'vault_path': str(get_vault_file()),
                 'crypto_ok': CRYPTO_OK,
+                'port': actual_port,
             })
         else:
             self.send_error(404)
@@ -235,8 +253,10 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
-def open_browser():
-    url = f'http://localhost:{PORT}'
+def open_browser(port: int = None):
+    if port is None:
+        port = get_configured_port()
+    url = f'http://localhost:{port}'
     time.sleep(0.4)
     # Try Chrome/Brave app mode first for a desktop-app look, fallback to default browser
     candidates = [
@@ -252,31 +272,57 @@ def open_browser():
         except Exception:
             continue
 
+def create_server(host: str = '127.0.0.1', port: int = None) -> http.server.ThreadingHTTPServer:
+    if port is None:
+        port = get_configured_port()
+    return http.server.ThreadingHTTPServer((host, port), NutcrackerHandler)
+
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Nutcracker API Key Manager Backend")
+    parser.add_argument("--port", "-p", type=int, default=None, help="Port to listen on (or set NUTCRACKER_PORT)")
+    parser.add_argument("--vault-file", type=str, default=None, help="Path to vault.enc (or set NUTCRACKER_VAULT_FILE)")
+    parser.add_argument("--vault-dir", type=str, default=None, help="Path to vault dir (or set NUTCRACKER_VAULT_DIR)")
+    parser.add_argument("--no-browser", action="store_true", help="Do not launch browser on startup")
+    args, _ = parser.parse_known_args()
+
+    if args.port is not None:
+        os.environ['NUTCRACKER_PORT'] = str(args.port)
+    if args.vault_file is not None:
+        os.environ['NUTCRACKER_VAULT_FILE'] = str(args.vault_file)
+    if args.vault_dir is not None:
+        os.environ['NUTCRACKER_VAULT_DIR'] = str(args.vault_dir)
+    if args.no_browser:
+        os.environ['NUTCRACKER_NO_BROWSER'] = "1"
+
     if not CRYPTO_OK:
         print('ERROR: cryptography package not installed.')
         print('Run: python3 -m pip install cryptography --user')
         sys.exit(1)
 
-    # If already running, focus existing window and exit cleanly
-    try:
-        req = urllib.request.Request(f'http://localhost:{PORT}/api/status')
-        with urllib.request.urlopen(req, timeout=0.8) as resp:
-            if resp.status == 200:
-                print(f'🔐 Nutcracker is already running on port {PORT}.')
-                print('   Opening browser window...')
-                open_browser()
-                return
-    except Exception:
-        pass
+    port = get_configured_port()
 
-    server = http.server.ThreadingHTTPServer(('127.0.0.1', PORT), NutcrackerHandler)
+    # If already running on non-zero port, focus existing window and exit cleanly
+    if port != 0:
+        try:
+            req = urllib.request.Request(f'http://localhost:{port}/api/status')
+            with urllib.request.urlopen(req, timeout=0.8) as resp:
+                if resp.status == 200:
+                    print(f'🔐 Nutcracker is already running on port {port}.')
+                    print('   Opening browser window...')
+                    open_browser(port)
+                    return
+        except Exception:
+            pass
 
-    print(f'🔐 Nutcracker running at http://localhost:{PORT}')
+    server = create_server('127.0.0.1', port)
+    bound_port = server.server_address[1]
+
+    print(f'🔐 Nutcracker running at http://localhost:{bound_port}')
     print('   Press Ctrl+C to quit.')
 
     if not os.environ.get('NUTCRACKER_NO_BROWSER'):
-        threading.Thread(target=open_browser, daemon=True).start()
+        threading.Thread(target=open_browser, args=(bound_port,), daemon=True).start()
 
     try:
         server.serve_forever()

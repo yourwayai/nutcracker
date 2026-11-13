@@ -5,7 +5,8 @@ const crypto = require('crypto');
 const os = require('os');
 
 // --- Constants ---
-const VAULT_FILE = path.join(os.homedir(), '.nutcracker', 'vault.enc');
+const VAULT_DIR = process.env.NUTCRACKER_VAULT_DIR || path.join(os.homedir(), '.nutcracker');
+const VAULT_FILE = process.env.NUTCRACKER_VAULT_FILE || path.join(VAULT_DIR, 'vault.enc');
 const SALT_BYTES = 32;
 const IV_BYTES = 12;   // GCM nonce
 const KEY_BYTES = 32;  // AES-256

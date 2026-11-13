@@ -11,6 +11,7 @@ import json
 import time
 import shutil
 import tempfile
+import socket
 import urllib.request
 import urllib.error
 import subprocess
@@ -18,13 +19,18 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+def find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
 class TestServerAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp_dir = tempfile.mkdtemp(prefix="nutcracker_test_")
         cls.vault_dir = Path(cls.temp_dir) / ".nutcracker"
         cls.vault_file = cls.vault_dir / "vault.enc"
-        cls.port = 17489
+        cls.port = find_free_port()
 
         cls.env = os.environ.copy()
         cls.env["NUTCRACKER_VAULT_DIR"] = str(cls.vault_dir)
@@ -82,6 +88,19 @@ class TestServerAPI(unittest.TestCase):
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read().decode('utf-8'))
+
+    def test_00_port_and_vault_isolation(self):
+        # Verify /api/status reports the isolated temporary vault path and allocated dynamic port
+        req = urllib.request.Request(f"{self.base_url}/api/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            status_data = json.loads(resp.read().decode('utf-8'))
+
+        self.assertEqual(status_data.get("vault_path"), str(self.vault_file))
+        self.assertEqual(status_data.get("port"), self.port)
+
+        # Verify that the user's home vault path ~/.nutcracker/vault.enc is not touched
+        home_vault = Path.home() / ".nutcracker" / "vault.enc"
+        self.assertNotEqual(Path(status_data.get("vault_path")), home_vault)
 
     def test_01_vault_not_exists_initially(self):
         res = self._post("/api/vault/exists", {})
