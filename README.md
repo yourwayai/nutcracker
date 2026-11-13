@@ -85,15 +85,38 @@ cargo run --release --manifest-path src-tauri/Cargo.toml
 3. Use the search bar for fast retrieval and click **Copy** whenever you need to use an API key in your code.
 4. Click **Lock Vault** or close the window when done.
 
+### 4. Configuration & Environment Variables
+
+Nutcracker supports environment variables and CLI arguments for custom vault storage paths, headless CI execution, and multi-vault isolation:
+
+| Environment Variable | CLI Option | Default | Description |
+|:---|:---|:---|:---|
+| `NUTCRACKER_PORT` | `--port, -p` | `17432` | Local HTTP backend port (use `0` for dynamic OS port allocation) |
+| `NUTCRACKER_VAULT_FILE` | `--vault-file` | `~/.nutcracker/vault.enc` | Direct path to the encrypted vault file |
+| `NUTCRACKER_VAULT_DIR` | `--vault-dir` | `~/.nutcracker` | Directory storing the vault file |
+| `NUTCRACKER_NO_BROWSER` | `--no-browser` | _unset_ | Disable auto-opening the browser (ideal for headless Linux / CI) |
+
+All configuration variables are consistently supported across the **Tauri v2 Rust native core**, **Python server**, and **Electron fallback**.
+
 ---
 
-## 🧪 Testing
+## 🧪 Testing & Verification
 
-Nutcracker includes an extensive automated regression test suite covering cryptographic primitives, server endpoints, and cross-language interoperability:
+Nutcracker features an automated test suite verifying cryptographic security, API endpoints, and dual-runtime parity:
 
 ```bash
+# Run comprehensive unified test suite (Python + Rust + Server API)
 python3 tests/run_all.py
+
+# Or run Rust native tests directly
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+**Key Test Coverage:**
+- **Zero-Pollution Test Isolation**: Tests run in an isolated temporary directory with dynamic ephemeral port allocation (`find_free_port()`), guaranteeing zero collision and zero impact on your production `~/.nutcracker/vault.enc`.
+- **Cryptographic Guarantees**: PBKDF2-HMAC-SHA256 (310,000 iterations), AES-256-GCM authenticated encryption, deterministic key derivation, and single-byte tampering detection.
+- **Dual-Runtime Interoperability**: Verifies 100% data compatibility between Python and Tauri Rust native backends.
+- **API Full Lifecycle**: Vault initialization, authentication, credential CRUD, master password migration, and full JSON export.
 
 ---
 
