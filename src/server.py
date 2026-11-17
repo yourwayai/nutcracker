@@ -253,24 +253,77 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
+def is_headless() -> bool:
+    """
+    Intelligently detect whether Nutcracker is running in a headless / non-GUI environment:
+    1. Explicit env vars: NUTCRACKER_NO_BROWSER or NUTCRACKER_HEADLESS set to truthy value ('1', 'true', 'yes').
+    2. CI environments: CI, GITHUB_ACTIONS, GITLAB_CI, TRAVIS, CIRCLECI, CONTINUOUS_INTEGRATION.
+    3. Non-macOS systems without a graphical display server (neither DISPLAY nor WAYLAND_DISPLAY is set).
+    4. Non-interactive environments where stdin is not an interactive TTY (e.g. piped, redirected, background).
+    """
+    # 1. Explicit environment variables
+    for var in ('NUTCRACKER_NO_BROWSER', 'NUTCRACKER_HEADLESS'):
+        val = os.environ.get(var, '').strip().lower()
+        if val in ('1', 'true', 'yes'):
+            return True
+
+    # 2. CI environment detection
+    ci_vars = ('CI', 'GITHUB_ACTIONS', 'GITLAB_CI', 'TRAVIS', 'CIRCLECI', 'CONTINUOUS_INTEGRATION')
+    for var in ci_vars:
+        val = os.environ.get(var, '').strip().lower()
+        if val and val not in ('0', 'false', 'no'):
+            return True
+
+    # 3. Non-macOS without graphical display (Linux / BSD / etc.)
+    if sys.platform != 'darwin':
+        has_display = bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+        if not has_display:
+            return True
+
+    # 4. Non-interactive execution (pipes, redirected stdin, background tasks)
+    try:
+        if sys.stdin is None or not sys.stdin.isatty():
+            return True
+    except Exception:
+        return True
+
+    return False
+
 def open_browser(port: int = None):
     if port is None:
         port = get_configured_port()
     url = f'http://localhost:{port}'
     time.sleep(0.4)
     # Try Chrome/Brave app mode first for a desktop-app look, fallback to default browser
-    candidates = [
-        ['open', '-n', '-a', 'Google Chrome', '--args', f'--app={url}', '--window-size=1100,750'],
-        ['open', '-n', '-a', 'Brave Browser', '--args', f'--app={url}'],
-        ['open', url],
-    ]
+    candidates = []
+    if sys.platform == 'darwin':
+        candidates = [
+            ['open', '-n', '-a', 'Google Chrome', '--args', f'--app={url}', '--window-size=1100,750'],
+            ['open', '-n', '-a', 'Brave Browser', '--args', f'--app={url}'],
+            ['open', url],
+        ]
+    elif sys.platform.startswith('linux'):
+        candidates = [
+            ['google-chrome', f'--app={url}', '--window-size=1100,750'],
+            ['brave-browser', f'--app={url}'],
+            ['xdg-open', url],
+        ]
+    else:
+        candidates = [['open', url]]
+
     for cmd in candidates:
         try:
             res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if res.returncode == 0:
-                break
+                return
         except Exception:
             continue
+
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception:
+        pass
 
 def create_server(host: str = '127.0.0.1', port: int = None) -> http.server.ThreadingHTTPServer:
     if port is None:
@@ -283,7 +336,7 @@ def main():
     parser.add_argument("--port", "-p", type=int, default=None, help="Port to listen on (or set NUTCRACKER_PORT)")
     parser.add_argument("--vault-file", type=str, default=None, help="Path to vault.enc (or set NUTCRACKER_VAULT_FILE)")
     parser.add_argument("--vault-dir", type=str, default=None, help="Path to vault dir (or set NUTCRACKER_VAULT_DIR)")
-    parser.add_argument("--no-browser", action="store_true", help="Do not launch browser on startup")
+    parser.add_argument("--no-browser", "--headless", dest="no_browser", action="store_true", help="Do not launch browser on startup (headless mode)")
     args, _ = parser.parse_known_args()
 
     if args.port is not None:
@@ -294,6 +347,7 @@ def main():
         os.environ['NUTCRACKER_VAULT_DIR'] = str(args.vault_dir)
     if args.no_browser:
         os.environ['NUTCRACKER_NO_BROWSER'] = "1"
+        os.environ['NUTCRACKER_HEADLESS'] = "1"
 
     if not CRYPTO_OK:
         print('ERROR: cryptography package not installed.')
@@ -308,9 +362,12 @@ def main():
             req = urllib.request.Request(f'http://localhost:{port}/api/status')
             with urllib.request.urlopen(req, timeout=0.8) as resp:
                 if resp.status == 200:
-                    print(f'🔐 Nutcracker is already running on port {port}.')
-                    print('   Opening browser window...')
-                    open_browser(port)
+                    print(f'🔐 Nutcracker is already running on port {port}.', flush=True)
+                    if is_headless():
+                        print(f'   Headless environment detected. Serving API at http://localhost:{port} without GUI.', flush=True)
+                    else:
+                        print('   Opening browser window...', flush=True)
+                        open_browser(port)
                     return
         except Exception:
             pass
@@ -318,10 +375,12 @@ def main():
     server = create_server('127.0.0.1', port)
     bound_port = server.server_address[1]
 
-    print(f'🔐 Nutcracker running at http://localhost:{bound_port}')
-    print('   Press Ctrl+C to quit.')
+    print(f'🔐 Nutcracker running at http://localhost:{bound_port}', flush=True)
+    print('   Press Ctrl+C to quit.', flush=True)
 
-    if not os.environ.get('NUTCRACKER_NO_BROWSER'):
+    if is_headless():
+        print(f'   Headless environment detected. Serving API at http://localhost:{bound_port} without GUI.', flush=True)
+    else:
         threading.Thread(target=open_browser, args=(bound_port,), daemon=True).start()
 
     try:

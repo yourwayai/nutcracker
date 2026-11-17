@@ -97,7 +97,7 @@ Nutcracker 原生支持通过环境变量与 CLI 参数灵活定制存储路径�
 | `NUTCRACKER_PORT` | `--port, -p` | `17432` | 本地 HTTP 后端端口（传入 `0` 时由系统自动分配空闲端口） |
 | `NUTCRACKER_VAULT_FILE` | `--vault-file` | `~/.nutcracker/vault.enc` | 自定义加密金库文件的完整物理路径 |
 | `NUTCRACKER_VAULT_DIR` | `--vault-dir` | `~/.nutcracker` | 存储金库文件的目录路径 |
-| `NUTCRACKER_NO_BROWSER` | `--no-browser` | _未设置_ | 设置为 `1` 或带上参数，禁止自启弹出浏览器（适用于无头 Linux/CI） |
+| `NUTCRACKER_NO_BROWSER` / `NUTCRACKER_HEADLESS` | `--no-browser`, `--headless` | _未设置_ (自动检测) | 禁止自启弹出浏览器。支持智能自动探测（无 DISPLAY/WAYLAND 的 Linux、CI 环境或非 TTY 管道时自动降级为无头纯 API 模式） |
 
 上述配置在 **Tauri v2 Rust 原生内核**、**Python 本地服务** 及 **Electron 备用环境** 间均保持一致支持。
 
@@ -105,7 +105,7 @@ Nutcracker 原生支持通过环境变量与 CLI 参数灵活定制存储路径�
 
 ## 🧪 自动化测试与质量保障
 
-Nutcracker 包含覆盖 14 个测试用例的全流程自动化回归套件，严格保证金融级加密安全、API 契约以及双运行时数据零锁死互通：
+Nutcracker 包含覆盖 16 个测试用例的全流程自动化回归套件，严格保证金融级加密安全、API 契约以及双运行时数据零锁死互通：
 
 ```bash
 # 执行完整统一测试套件（Python + Rust + 服务端 API）
@@ -117,6 +117,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 **测试核心覆盖点：**
 - **零污染动态测试隔离**：测试动态探测临时空闲端口（`find_free_port()`），将金库重定向至隔离沙箱，100% 杜绝端口碰撞及对生产数据 `~/.nutcracker/vault.enc` 的任何侵入。
+- **智能无头环境探测断言**：测试 `--headless` 命令行参数与无头环境（无 DISPLAY 显示服务、CI 环境、管道/非交互 TTY）的自动识别与优雅降级控制台日志。
 - **高强度密码学校验**：310,000 次 PBKDF2-HMAC-SHA256 迭代、AES-256-GCM 加密完整性、防单字节篡改拦截与中文 UTF-8 边界测试。
 - **双运行时互解验证**：确保 Python 加密的金库可被 Rust 原生层秒级读取，反之亦然。
 - **金库完整生命周期**：金库创建、解锁失败拦截、凭证增删查改、主密码平滑轮换与脱敏导出。

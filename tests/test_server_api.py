@@ -188,6 +188,87 @@ class TestServerAPI(unittest.TestCase):
             exported_data = json.load(f)
         self.assertEqual(len(exported_data.get("entries", [])), 2)
 
+    def test_07_headless_auto_detection(self):
+        from unittest.mock import patch, MagicMock
+        from src.server import is_headless
+
+        # Test explicit NUTCRACKER_NO_BROWSER
+        with patch.dict(os.environ, {"NUTCRACKER_NO_BROWSER": "1"}, clear=False):
+            self.assertTrue(is_headless())
+
+        # Test explicit NUTCRACKER_HEADLESS
+        with patch.dict(os.environ, {"NUTCRACKER_HEADLESS": "true"}, clear=False):
+            self.assertTrue(is_headless())
+
+        # Test CI environment variable
+        with patch.dict(os.environ, {"CI": "true", "NUTCRACKER_NO_BROWSER": "", "NUTCRACKER_HEADLESS": ""}, clear=False):
+            self.assertTrue(is_headless())
+
+        # Test GITHUB_ACTIONS environment variable
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "NUTCRACKER_NO_BROWSER": "", "NUTCRACKER_HEADLESS": ""}, clear=False):
+            self.assertTrue(is_headless())
+
+        # Test non-macOS headless environment without display (DISPLAY and WAYLAND_DISPLAY absent)
+        clean_env = {k: v for k, v in os.environ.items() if k not in (
+            "NUTCRACKER_NO_BROWSER", "NUTCRACKER_HEADLESS", "CI", "GITHUB_ACTIONS", "GITLAB_CI",
+            "TRAVIS", "CIRCLECI", "CONTINUOUS_INTEGRATION", "DISPLAY", "WAYLAND_DISPLAY"
+        )}
+        with patch.dict(os.environ, clean_env, clear=True):
+            with patch("sys.platform", "linux"):
+                self.assertTrue(is_headless())
+
+        # Test non-interactive stdin pipe / non-tty
+        with patch.dict(os.environ, clean_env, clear=True):
+            with patch("sys.platform", "darwin"):
+                mock_stdin = MagicMock()
+                mock_stdin.isatty.return_value = False
+                with patch("sys.stdin", mock_stdin):
+                    self.assertTrue(is_headless())
+
+    def test_08_cli_headless_flag_and_log(self):
+        # Test starting server with --headless CLI flag and check stdout output
+        headless_port = find_free_port()
+        temp_dir = tempfile.mkdtemp(prefix="nutcracker_headless_test_")
+        try:
+            env = os.environ.copy()
+            env["NUTCRACKER_PORT"] = str(headless_port)
+            env["NUTCRACKER_VAULT_DIR"] = str(Path(temp_dir) / ".nutcracker")
+            env["PYTHONUNBUFFERED"] = "1"
+            # Clear explicit no-browser env var to ensure --headless CLI flag triggers it
+            env.pop("NUTCRACKER_NO_BROWSER", None)
+            env.pop("NUTCRACKER_HEADLESS", None)
+
+            proc = subprocess.Popen(
+                [sys.executable, "-u", str(PROJECT_ROOT / "src" / "server.py"), "--headless", "--port", str(headless_port)],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            # Wait for server to be ready
+            url = f"http://127.0.0.1:{headless_port}/api/status"
+            server_ready = False
+            for _ in range(30):
+                try:
+                    with urllib.request.urlopen(url, timeout=0.5) as resp:
+                        if resp.status == 200:
+                            server_ready = True
+                            break
+                except Exception:
+                    time.sleep(0.1)
+
+            self.assertTrue(server_ready, "Server failed to start in --headless mode")
+
+            # Terminate and inspect output
+            proc.terminate()
+            stdout, stderr = proc.communicate(timeout=2)
+
+            self.assertIn("Headless environment detected", stdout)
+            self.assertIn("without GUI", stdout)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == '__main__':
     unittest.main()

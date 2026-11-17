@@ -94,7 +94,7 @@ Nutcracker supports environment variables and CLI arguments for custom vault sto
 | `NUTCRACKER_PORT` | `--port, -p` | `17432` | Local HTTP backend port (use `0` for dynamic OS port allocation) |
 | `NUTCRACKER_VAULT_FILE` | `--vault-file` | `~/.nutcracker/vault.enc` | Direct path to the encrypted vault file |
 | `NUTCRACKER_VAULT_DIR` | `--vault-dir` | `~/.nutcracker` | Directory storing the vault file |
-| `NUTCRACKER_NO_BROWSER` | `--no-browser` | _unset_ | Disable auto-opening the browser (ideal for headless Linux / CI) |
+| `NUTCRACKER_NO_BROWSER` / `NUTCRACKER_HEADLESS` | `--no-browser`, `--headless` | _unset_ (Auto) | Disable auto-opening the browser. Automatically detected in headless environments (Linux without DISPLAY/WAYLAND, CI runners, or non-TTY pipes) |
 
 All configuration variables are consistently supported across the **Tauri v2 Rust native core**, **Python server**, and **Electron fallback**.
 
@@ -112,8 +112,9 @@ python3 tests/run_all.py
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-**Key Test Coverage:**
+**Key Test Coverage (16 Test Cases):**
 - **Zero-Pollution Test Isolation**: Tests run in an isolated temporary directory with dynamic ephemeral port allocation (`find_free_port()`), guaranteeing zero collision and zero impact on your production `~/.nutcracker/vault.enc`.
+- **Intelligent Headless Auto-Detection**: Validates CLI `--headless` flag and environment auto-detection across CI, non-TTY pipes, and headless servers without graphical displays.
 - **Cryptographic Guarantees**: PBKDF2-HMAC-SHA256 (310,000 iterations), AES-256-GCM authenticated encryption, deterministic key derivation, and single-byte tampering detection.
 - **Dual-Runtime Interoperability**: Verifies 100% data compatibility between Python and Tauri Rust native backends.
 - **API Full Lifecycle**: Vault initialization, authentication, credential CRUD, master password migration, and full JSON export.

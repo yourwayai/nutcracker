@@ -1,6 +1,6 @@
 # Nutcracker 待办与优化清单 (Backlog & Roadmap)
 
-本项目在自动化测试回归与沙箱实测过程中，梳理出以下待优化事项。本文档记录了**已完成的修复项**以及**剩余 4 个待深入优化的技术点**与具体实施方案，供后续迭代推进。
+本项目在自动化测试回归与沙箱实测过程中，梳理出以下待优化事项。本文档记录了**已完成的修复项**以及**剩余 3 个待深入优化的技术点**与具体实施方案，供后续迭代推进。
 
 ---
 
@@ -14,29 +14,17 @@
     - Tauri Rust 原生内核增加 `NUTCRACKER_VAULT_FILE` 与 `NUTCRACKER_VAULT_DIR` 拦截与单测覆盖。
     - 测试框架引入 `find_free_port()` 动态申请空闲端口，新增 `test_00_port_and_vault_isolation` 断言，确保 100% 不触碰生产金库 `~/.nutcracker/vault.enc`。
 
+- [x] **2. Linux 无头沙箱 / CI 环境智能无头探测与参数统一 (Headless Auto-Detection)**
+  - **完成时间**：2026-11-17
+  - **核心成果**：
+    - Python 服务端实现 `is_headless()` 智能探测，自动识别无 GUI 显示服务器（非 macOS 且无 `DISPLAY`/`WAYLAND_DISPLAY`）、常见 CI 环境变量（`CI`、`GITHUB_ACTIONS`、`GITLAB_CI` 等）、非交互 TTY 管道（`not sys.stdin.isatty()`）以及显式配置。
+    - 统一支持 `--headless` 作为 `--no-browser` 的常用 CLI 别名，并支持 `NUTCRACKER_HEADLESS` 环境变量。
+    - 智能无头降级，控制台友好输出 `"Headless environment detected. Serving API at http://localhost:<port> without GUI."` 并跳过浏览器唤醒；同时扩充了跨平台（macOS / Linux `xdg-open` / `webbrowser`）桌面打开降级链。
+    - 新增 `test_07_headless_auto_detection` 与 `test_08_cli_headless_flag_and_log` 自动化测试用例，回归测试套件扩展至 16 个用例。
+
 ---
 
 ## 📌 待优化清单 (Next Iterations)
-
-### 2. Linux 无头沙箱 / CI 环境智能无头探测 (Headless Auto-Detection)
-
-- **当前现状**：
-  - 目前仅依赖显式传递环境变量 `NUTCRACKER_NO_BROWSER=1` 或 CLI 参数 `--no-browser` 来阻止启动时调用系统浏览器。
-  - 在无头 Linux 服务器（如通过 SSH 连接）、Docker 容器或 CI 运行环境下，如果未传入该变量，后台线程仍会尝试调用 `open`/浏览器命令，产生警告或挂起。
-- **优化方案**：
-  1. **环境特征自动识别**：
-     - 检测系统环境变量：当非 macOS 且 `DISPLAY` 与 `WAYLAND_DISPLAY` 均为空时，自动判断为无头环境。
-     - 识别常见 CI 环境变量（如 `CI=true`、`GITHUB_ACTIONS=true`、`GITLAB_CI` 等）。
-     - 检测是否在无 TTY 管道中运行（`not sys.stdin.isatty()`）。
-  2. **优雅降级**：
-     - 在判定为无头环境时，自动跳过 `open_browser()`，并在控制台友好输出：
-       `"Headless environment detected. Serving API at http://localhost:<port> without GUI."`
-  3. **参数统一**：
-     - 支持 `--headless` 作为 `--no-browser` 的常用别名。
-- **涉及模块**：[`src/server.py`](src/server.py)
-- **优先级**：P2（中）
-
----
 
 ### 3. API 错误契约标准化与错误码机制 (Standardized API Error Codes)
 
@@ -103,9 +91,9 @@
 
 ## 🎯 迭代推进节奏建议
 
-| 优化项 | 推荐版本 | 预计工时 | 依赖与影响 |
-|:---|:---|:---|:---|
-| **#2 无头环境自动探测** | v0.1.1 | 0.5 天 | 仅改动 `server.py`，无破坏性影响 |
-| **#3 API 错误码标准化** | v0.1.1 | 1 天 | 需联动前端 `app.js` 与单测更新 |
-| **#4 Cargo 路径自适应** | v0.1.1 | 0.5 天 | 仅改动测试脚本 |
-| **#5 内存清零与 Fuzz** | v0.2.0 | 1.5 天 | 涉及 Rust 依赖添加与底层内存处理 |
+| 优化项 | 状态 | 推荐版本 | 预计工时 | 依赖与影响 |
+|:---|:---:|:---|:---|:---|
+| **#2 无头环境自动探测** | ✅ 已完成 | v0.1.1 | 0.5 天 | 仅改动 `server.py`，无破坏性影响 |
+| **#3 API 错误码标准化** | 待开发 | v0.1.1 | 1 天 | 需联动前端 `app.js` 与单测更新 |
+| **#4 Cargo 路径自适应** | 待开发 | v0.1.1 | 0.5 天 | 仅改动测试脚本 |
+| **#5 内存清零与 Fuzz** | 待开发 | v0.2.0 | 1.5 天 | 涉及 Rust 依赖添加与底层内存处理 |
