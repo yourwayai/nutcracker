@@ -67,6 +67,18 @@ def decrypt(blob: bytes, key: bytes) -> str:
     nonce, ct = blob[:12], blob[12:]
     return AESGCM(key).decrypt(nonce, ct, None).decode('utf-8')
 
+# ── Error Codes ────────────────────────────────────────────────────────────────
+class ErrorCode:
+    AUTH_FAILED = "AUTH_FAILED"
+    VAULT_CORRUPTED = "VAULT_CORRUPTED"
+    VAULT_NOT_FOUND = "VAULT_NOT_FOUND"
+    INVALID_ARGUMENT = "INVALID_ARGUMENT"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    UNKNOWN_ENDPOINT = "UNKNOWN_ENDPOINT"
+
+def error_response(code: str, error: str) -> dict:
+    return {'ok': False, 'code': code, 'error': error}
+
 # ── Vault helpers ──────────────────────────────────────────────────────────────
 def vault_exists() -> bool:
     return get_vault_file().exists()
@@ -81,64 +93,125 @@ def _write_vault_bytes(blob: bytes):
     tmp_file.replace(v_file)
 
 def create_vault(password: str) -> dict:
-    salt = secrets.token_bytes(SALT_BYTES)
-    key  = derive_key(password, salt)
-    payload = json.dumps({'entries': []})
-    encrypted = encrypt(payload, key)
-    _write_vault_bytes(salt + encrypted)
-    return {'ok': True}
+    if not password:
+        return error_response(ErrorCode.INVALID_ARGUMENT, 'Password required')
+    try:
+        salt = secrets.token_bytes(SALT_BYTES)
+        key  = derive_key(password, salt)
+        payload = json.dumps({'entries': []})
+        encrypted = encrypt(payload, key)
+        _write_vault_bytes(salt + encrypted)
+        return {'ok': True}
+    except Exception as e:
+        return error_response(ErrorCode.INTERNAL_ERROR, str(e))
 
 def unlock_vault(password: str) -> dict:
+    if not password:
+        return error_response(ErrorCode.INVALID_ARGUMENT, 'Password required')
+    if not vault_exists():
+        return error_response(ErrorCode.VAULT_NOT_FOUND, 'Vault file not found.')
     try:
-        raw  = get_vault_file().read_bytes()
-        salt = raw[:SALT_BYTES]
-        blob = raw[SALT_BYTES:]
-        key  = derive_key(password, salt)
+        raw = get_vault_file().read_bytes()
+    except Exception as e:
+        return error_response(ErrorCode.INTERNAL_ERROR, f'Failed to read vault file: {e}')
+
+    if len(raw) < SALT_BYTES + 12 + 16:
+        return error_response(ErrorCode.VAULT_CORRUPTED, 'Corrupted vault file (too short).')
+
+    salt = raw[:SALT_BYTES]
+    blob = raw[SALT_BYTES:]
+    try:
+        key = derive_key(password, salt)
         text = decrypt(blob, key)
+    except Exception:
+        return error_response(ErrorCode.AUTH_FAILED, 'Wrong master password or corrupted vault.')
+
+    try:
         data = json.loads(text)
         return {'ok': True, 'data': data}
     except Exception:
-        return {'ok': False, 'error': 'Wrong master password or corrupted vault.'}
+        return error_response(ErrorCode.VAULT_CORRUPTED, 'Corrupted vault payload: invalid JSON.')
 
 def save_vault(password: str, data: dict) -> dict:
+    if not password:
+        return error_response(ErrorCode.INVALID_ARGUMENT, 'Password required')
+    if not vault_exists():
+        return error_response(ErrorCode.VAULT_NOT_FOUND, 'Vault file not found.')
     try:
-        raw  = get_vault_file().read_bytes()
-        salt = raw[:SALT_BYTES]
-        key  = derive_key(password, salt)
+        raw = get_vault_file().read_bytes()
+    except Exception as e:
+        return error_response(ErrorCode.INTERNAL_ERROR, f'Failed to read vault file: {e}')
+
+    if len(raw) < SALT_BYTES:
+        return error_response(ErrorCode.VAULT_CORRUPTED, 'Corrupted vault file.')
+
+    salt = raw[:SALT_BYTES]
+    try:
+        key = derive_key(password, salt)
         text = json.dumps(data)
         encrypted = encrypt(text, key)
         _write_vault_bytes(salt + encrypted)
         return {'ok': True}
     except Exception as e:
-        return {'ok': False, 'error': str(e)}
+        return error_response(ErrorCode.INTERNAL_ERROR, str(e))
 
 def change_password(old_pw: str, new_pw: str) -> dict:
+    if not old_pw or not new_pw:
+        return error_response(ErrorCode.INVALID_ARGUMENT, 'Both old and new passwords are required.')
+    if not vault_exists():
+        return error_response(ErrorCode.VAULT_NOT_FOUND, 'Vault file not found.')
     try:
-        raw     = get_vault_file().read_bytes()
-        old_salt = raw[:SALT_BYTES]
-        blob    = raw[SALT_BYTES:]
+        raw = get_vault_file().read_bytes()
+    except Exception as e:
+        return error_response(ErrorCode.INTERNAL_ERROR, f'Failed to read vault file: {e}')
+
+    if len(raw) < SALT_BYTES + 12 + 16:
+        return error_response(ErrorCode.VAULT_CORRUPTED, 'Corrupted vault file.')
+
+    old_salt = raw[:SALT_BYTES]
+    old_blob = raw[SALT_BYTES:]
+    try:
         old_key = derive_key(old_pw, old_salt)
-        text    = decrypt(blob, old_key)
+        text = decrypt(old_blob, old_key)
+    except Exception:
+        return error_response(ErrorCode.AUTH_FAILED, 'Wrong current password.')
+
+    try:
         new_salt = secrets.token_bytes(SALT_BYTES)
         new_key  = derive_key(new_pw, new_salt)
         _write_vault_bytes(new_salt + encrypt(text, new_key))
         return {'ok': True}
-    except Exception:
-        return {'ok': False, 'error': 'Wrong current password.'}
+    except Exception as e:
+        return error_response(ErrorCode.INTERNAL_ERROR, str(e))
 
 def export_vault(password: str, export_path: str) -> dict:
+    if not password:
+        return error_response(ErrorCode.INVALID_ARGUMENT, 'Password required')
+    if not vault_exists():
+        return error_response(ErrorCode.VAULT_NOT_FOUND, 'Vault file not found.')
     try:
-        raw  = get_vault_file().read_bytes()
-        salt = raw[:SALT_BYTES]
-        blob = raw[SALT_BYTES:]
-        key  = derive_key(password, salt)
+        raw = get_vault_file().read_bytes()
+    except Exception as e:
+        return error_response(ErrorCode.INTERNAL_ERROR, f'Failed to read vault file: {e}')
+
+    if len(raw) < SALT_BYTES + 12 + 16:
+        return error_response(ErrorCode.VAULT_CORRUPTED, 'Corrupted vault file.')
+
+    salt = raw[:SALT_BYTES]
+    blob = raw[SALT_BYTES:]
+    try:
+        key = derive_key(password, salt)
         text = decrypt(blob, key)
+    except Exception:
+        return error_response(ErrorCode.AUTH_FAILED, 'Wrong master password.')
+
+    try:
         target = Path(export_path).expanduser().resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding='utf-8')
         return {'ok': True}
     except Exception as e:
-        return {'ok': False, 'error': str(e)}
+        return error_response(ErrorCode.INTERNAL_ERROR, str(e))
 
 # ── HTTP Handler ───────────────────────────────────────────────────────────────
 STATIC_DIR = Path(__file__).parent / 'renderer'
@@ -209,7 +282,7 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
         try:
             req = json.loads(body) if body else {}
         except Exception:
-            self.send_json({'ok': False, 'error': 'Invalid JSON'}, 400)
+            self.send_json(error_response(ErrorCode.INVALID_ARGUMENT, 'Invalid JSON'), 400)
             return
 
         path = self.path
@@ -220,7 +293,7 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
         elif path == '/api/vault/create':
             pw = req.get('password', '')
             if not pw:
-                self.send_json({'ok': False, 'error': 'Password required'})
+                self.send_json(error_response(ErrorCode.INVALID_ARGUMENT, 'Password required'))
             else:
                 self.send_json(create_vault(pw))
 
@@ -249,7 +322,7 @@ class NutcrackerHandler(http.server.BaseHTTPRequestHandler):
             threading.Thread(target=lambda: (time.sleep(0.3), os._exit(0))).start()
 
         else:
-            self.send_json({'ok': False, 'error': 'Unknown endpoint'}, 404)
+            self.send_json(error_response(ErrorCode.UNKNOWN_ENDPOINT, 'Unknown endpoint'), 404)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

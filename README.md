@@ -112,9 +112,10 @@ python3 tests/run_all.py
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-**Key Test Coverage (16 Test Cases):**
+**Key Test Coverage (17 Test Cases):**
 - **Zero-Pollution Test Isolation**: Tests run in an isolated temporary directory with dynamic ephemeral port allocation (`find_free_port()`), guaranteeing zero collision and zero impact on your production `~/.nutcracker/vault.enc`.
 - **Intelligent Headless Auto-Detection**: Validates CLI `--headless` flag and environment auto-detection across CI, non-TTY pipes, and headless servers without graphical displays.
+- **Standardized API Error Codes**: Structured `{ ok: false, code: "...", error: "..." }` responses aligned across Python and Rust (`AUTH_FAILED`, `VAULT_CORRUPTED`, `VAULT_NOT_FOUND`, `INVALID_ARGUMENT`).
 - **Cryptographic Guarantees**: PBKDF2-HMAC-SHA256 (310,000 iterations), AES-256-GCM authenticated encryption, deterministic key derivation, and single-byte tampering detection.
 - **Dual-Runtime Interoperability**: Verifies 100% data compatibility between Python and Tauri Rust native backends.
 - **API Full Lifecycle**: Vault initialization, authentication, credential CRUD, master password migration, and full JSON export.

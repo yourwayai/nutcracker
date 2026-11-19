@@ -1,6 +1,6 @@
 # Nutcracker 待办与优化清单 (Backlog & Roadmap)
 
-本项目在自动化测试回归与沙箱实测过程中，梳理出以下待优化事项。本文档记录了**已完成的修复项**以及**剩余 3 个待深入优化的技术点**与具体实施方案，供后续迭代推进。
+本项目在自动化测试回归与沙箱实测过程中，梳理出以下待优化事项。本文档记录了**已完成的修复项**以及**剩余 2 个待深入优化的技术点**与具体实施方案，供后续迭代推进。
 
 ---
 
@@ -16,44 +16,24 @@
 
 - [x] **2. Linux 无头沙箱 / CI 环境智能无头探测与参数统一 (Headless Auto-Detection)**
   - **完成时间**：2026-11-17
+  - **对应提交**：`8fe8a69`
   - **核心成果**：
     - Python 服务端实现 `is_headless()` 智能探测，自动识别无 GUI 显示服务器（非 macOS 且无 `DISPLAY`/`WAYLAND_DISPLAY`）、常见 CI 环境变量（`CI`、`GITHUB_ACTIONS`、`GITLAB_CI` 等）、非交互 TTY 管道（`not sys.stdin.isatty()`）以及显式配置。
     - 统一支持 `--headless` 作为 `--no-browser` 的常用 CLI 别名，并支持 `NUTCRACKER_HEADLESS` 环境变量。
     - 智能无头降级，控制台友好输出 `"Headless environment detected. Serving API at http://localhost:<port> without GUI."` 并跳过浏览器唤醒；同时扩充了跨平台（macOS / Linux `xdg-open` / `webbrowser`）桌面打开降级链。
     - 新增 `test_07_headless_auto_detection` 与 `test_08_cli_headless_flag_and_log` 自动化测试用例，回归测试套件扩展至 16 个用例。
 
+- [x] **3. API 错误契约标准化与错误码机制 (Standardized API Error Codes)**
+  - **完成时间**：2026-11-19
+  - **核心成果**：
+    - 统一错误返回结构：`{ "ok": false, "code": "...", "error": "..." }`，彻底消除基于纯字符串判定破坏的风险；
+    - 规范错误枚举常量：`AUTH_FAILED`（认证解密失败）、`VAULT_CORRUPTED`（数据损坏或截断）、`VAULT_NOT_FOUND`（金库文件未找到）、`INVALID_ARGUMENT`（参数缺失或非法格式）、`INTERNAL_ERROR` 与 `UNKNOWN_ENDPOINT`；
+    - Tauri Rust 原生内核定义强类型 `enum VaultError` 并实现 `serde::Serialize`、`Deref<Target = str>`、`Display` 与 `std::error::Error`，双端错误码完全镜像对齐且 100% 向后兼容；
+    - 新增 `test_09_api_standardized_error_codes` 与 `test_vault_error_standardized_contract` 自动化测试用例，回归测试套件扩展至 17 个用例（Rust 原生 9 个用例）。
+
 ---
 
 ## 📌 待优化清单 (Next Iterations)
-
-### 3. API 错误契约标准化与错误码机制 (Standardized API Error Codes)
-
-- **当前现状**：
-  - 当前前后端与测试断言主要依赖字符串匹配（例如断言 `'Wrong master password'` 是否包含在 `res['error']` 中）。
-  - 若未来进行中英文国际化（i18n）或文案微调，基于硬编码字符串的判定容易被意外破坏。
-- **优化方案**：
-  1. **引入结构化错误代码**：
-     - 统一响应格式：
-       ```json
-       {
-         "ok": false,
-         "code": "AUTH_FAILED",
-         "error": "Wrong master password or corrupted vault."
-       }
-       ```
-     - 定义规范的错误枚举常量：
-       - `AUTH_FAILED`：主密码解密认证失败（Auth Tag 校验未通过）
-       - `VAULT_CORRUPTED`：金库数据过短或头部 Magic 损毁
-       - `VAULT_NOT_FOUND`：金库文件尚未初始化
-       - `INVALID_ARGUMENT`：参数缺失或格式不合法
-  2. **Tauri Rust 端强类型错误枚举**：
-     - 在 Rust 端定义 `enum VaultError` 并实现 `serde::Serialize`，与 Python HTTP 返回的 `code` 严格镜像对齐。
-  3. **前端对齐**：
-     - `src/renderer/app.js` 优先依据 `res.code` 触发对应 UI 状态处理，提升容错能力。
-- **涉及模块**：[`src/server.py`](src/server.py), [`src-tauri/src/main.rs`](src-tauri/src/main.rs), [`src/renderer/app.js`](src/renderer/app.js), [`tests/test_server_api.py`](tests/test_server_api.py)
-- **优先级**：P2（中）
-
----
 
 ### 4. 跨平台 Cargo / Rust 工具链自适应探测 (Robust Toolchain Discovery)
 
@@ -94,6 +74,6 @@
 | 优化项 | 状态 | 推荐版本 | 预计工时 | 依赖与影响 |
 |:---|:---:|:---|:---|:---|
 | **#2 无头环境自动探测** | ✅ 已完成 | v0.1.1 | 0.5 天 | 仅改动 `server.py`，无破坏性影响 |
-| **#3 API 错误码标准化** | 待开发 | v0.1.1 | 1 天 | 需联动前端 `app.js` 与单测更新 |
+| **#3 API 错误码标准化** | ✅ 已完成 | v0.1.1 | 1 天 | 统一 Python 与 Rust 错误契约并扩充单测 |
 | **#4 Cargo 路径自适应** | 待开发 | v0.1.1 | 0.5 天 | 仅改动测试脚本 |
 | **#5 内存清零与 Fuzz** | 待开发 | v0.2.0 | 1.5 天 | 涉及 Rust 依赖添加与底层内存处理 |

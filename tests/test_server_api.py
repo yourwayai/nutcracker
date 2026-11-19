@@ -86,8 +86,11 @@ class TestServerAPI(unittest.TestCase):
             data=json.dumps(payload).encode('utf-8'),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode('utf-8'))
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            return json.loads(e.read().decode('utf-8'))
 
     def test_00_port_and_vault_isolation(self):
         # Verify /api/status reports the isolated temporary vault path and allocated dynamic port
@@ -268,6 +271,75 @@ class TestServerAPI(unittest.TestCase):
             self.assertIn("without GUI", stdout)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_09_api_standardized_error_codes(self):
+        # 1. AUTH_FAILED
+        res_wrong_pw = self._post("/api/vault/unlock", {"password": "IncorrectPassword999!"})
+        self.assertFalse(res_wrong_pw.get("ok"))
+        self.assertEqual(res_wrong_pw.get("code"), "AUTH_FAILED")
+        self.assertIn("Wrong master password", res_wrong_pw.get("error", ""))
+
+        res_wrong_change = self._post("/api/vault/change_password", {
+            "old_password": "IncorrectPassword999!",
+            "new_password": "ValidNewPassword123!"
+        })
+        self.assertFalse(res_wrong_change.get("ok"))
+        self.assertEqual(res_wrong_change.get("code"), "AUTH_FAILED")
+
+        res_wrong_export = self._post("/api/vault/export", {
+            "password": "IncorrectPassword999!",
+            "path": "/tmp/test_export.json"
+        })
+        self.assertFalse(res_wrong_export.get("ok"))
+        self.assertEqual(res_wrong_export.get("code"), "AUTH_FAILED")
+
+        # 2. INVALID_ARGUMENT
+        res_empty_create = self._post("/api/vault/create", {"password": ""})
+        self.assertFalse(res_empty_create.get("ok"))
+        self.assertEqual(res_empty_create.get("code"), "INVALID_ARGUMENT")
+
+        res_empty_unlock = self._post("/api/vault/unlock", {"password": ""})
+        self.assertFalse(res_empty_unlock.get("ok"))
+        self.assertEqual(res_empty_unlock.get("code"), "INVALID_ARGUMENT")
+
+        res_missing_change = self._post("/api/vault/change_password", {"old_password": "foo"})
+        self.assertFalse(res_missing_change.get("ok"))
+        self.assertEqual(res_missing_change.get("code"), "INVALID_ARGUMENT")
+
+        # Invalid JSON payload
+        req_bad_json = urllib.request.Request(
+            f"{self.base_url}/api/vault/unlock",
+            data=b"not valid json {{{",
+            headers={"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req_bad_json, timeout=5) as resp:
+                bad_json_res = json.loads(resp.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            bad_json_res = json.loads(e.read().decode('utf-8'))
+        self.assertFalse(bad_json_res.get("ok"))
+        self.assertEqual(bad_json_res.get("code"), "INVALID_ARGUMENT")
+
+        # 3. UNKNOWN_ENDPOINT
+        res_unknown = self._post("/api/unknown_endpoint", {})
+        self.assertFalse(res_unknown.get("ok"))
+        self.assertEqual(res_unknown.get("code"), "UNKNOWN_ENDPOINT")
+
+        # 4. VAULT_NOT_FOUND (via direct server function with isolated temp dir)
+        from src.server import unlock_vault, ErrorCode
+        nonexistent_vault = Path(tempfile.mkdtemp()) / "missing_dir" / "missing_vault.enc"
+        with unittest.mock.patch.dict(os.environ, {"NUTCRACKER_VAULT_FILE": str(nonexistent_vault)}):
+            res_not_found = unlock_vault("SomePassword123!")
+            self.assertFalse(res_not_found.get("ok"))
+            self.assertEqual(res_not_found.get("code"), ErrorCode.VAULT_NOT_FOUND)
+
+        # 5. VAULT_CORRUPTED (via direct server function with truncated file)
+        corrupted_file = Path(tempfile.mkdtemp()) / "corrupted.enc"
+        corrupted_file.write_bytes(b"short bytes")
+        with unittest.mock.patch.dict(os.environ, {"NUTCRACKER_VAULT_FILE": str(corrupted_file)}):
+            res_corrupted = unlock_vault("SomePassword123!")
+            self.assertFalse(res_corrupted.get("ok"))
+            self.assertEqual(res_corrupted.get("code"), ErrorCode.VAULT_CORRUPTED)
 
 
 if __name__ == '__main__':
