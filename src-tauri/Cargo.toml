@@ -16,3 +16,4 @@ pbkdf2 = { version = "0.12", default-features = false, features = ["hmac", "sha2
 sha2 = "0.10"
 rand = "0.8"
 dirs = "5.0"
+zeroize = "1.8"

@@ -1,6 +1,6 @@
 # Nutcracker 待办与优化清单 (Backlog & Roadmap)
 
-本项目在自动化测试回归与沙箱实测过程中，梳理出以下待优化事项。本文档记录了**已完成的修复项**以及**剩余 2 个待深入优化的技术点**与具体实施方案，供后续迭代推进。
+本项目在自动化测试回归与沙箱实测过程中，梳理出以下待优化事项。本文档记录了**所有已完成的修复与优化项**，供后续回顾与持续演进。
 
 ---
 
@@ -31,41 +31,20 @@
     - Tauri Rust 原生内核定义强类型 `enum VaultError` 并实现 `serde::Serialize`、`Deref<Target = str>`、`Display` 与 `std::error::Error`，双端错误码完全镜像对齐且 100% 向后兼容；
     - 新增 `test_09_api_standardized_error_codes` 与 `test_vault_error_standardized_contract` 自动化测试用例，回归测试套件扩展至 17 个用例（Rust 原生 9 个用例）。
 
----
+- [x] **4. 跨平台 Cargo / Rust 工具链自适应探测 (Robust Toolchain Discovery)**
+  - **完成时间**：2026-11-25
+  - **核心成果**：
+    - `tests/test_cross_compatibility.py` 实现 `get_cargo_fallback_dirs()`、`discover_cargo_binary()` 与 `format_cargo_missing_guidance()`。
+    - 优先探测 `$CARGO_HOME/bin` 与 `PATH`，并遍历 `~/.cargo/bin`、`$XDG_DATA_HOME/cargo/bin`、`~/.local/share/cargo/bin`、`~/.asdf/shims`、`~/.local/share/mise/shims`、`/opt/homebrew/bin`、`/usr/local/bin` 及 Windows `%USERPROFILE%\.cargo\bin`；同时在调用 `cargo test` 时自动将探测到的工具链 `bin` 目录注入子进程 `PATH`，避免沙箱环境漏检 `rustc`。
+    - 当未检测到 Cargo 时输出清晰的 `rustup` 安装命令与 `CARGO_HOME`/`PATH` 配置指引后优雅跳过。
+    - 新增 `TestCargoToolchainDiscovery` 3 项自动化单元测试，回归测试套件扩展至 20 个用例。
 
-## 📌 待优化清单 (Next Iterations)
-
-### 4. 跨平台 Cargo / Rust 工具链自适应探测 (Robust Toolchain Discovery)
-
-- **当前现状**：
-  - `tests/test_cross_compatibility.py` 中通过检查 `shutil.which("cargo")` 和硬编码的 `~/.cargo/bin/cargo` 来探测 Cargo 二进制文件。
-  - 在使用 `rustup` 自定义根目录、`asdf` / `mise` 多版本管理器、Windows 环境或特定容器镜像（如 `$CARGO_HOME` 非标准路径）时，仍存在工具链漏检可能。
-- **优化方案**：
-  1. **动态支持 `$CARGO_HOME`**：
-     - 优先读取 `os.environ.get("CARGO_HOME")`，在其下的 `bin/cargo` 寻找可执行文件。
-  2. **多探测路径候选列表**：
-     - 遍历候选路径：`$CARGO_HOME/bin`、`~/.cargo/bin`、`~/.local/share/cargo/bin`、`/usr/local/bin`、`/opt/homebrew/bin`。
-  3. **清晰的引导输出**：
-     - 当检测不到 Cargo 时，除调用 `self.skipTest` 外，在终端给出清晰的操作指引（如 `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`），提升开发者调试体验。
-- **涉及模块**：[`tests/test_cross_compatibility.py`](tests/test_cross_compatibility.py)
-- **优先级**：P3（低）
-
----
-
-### 5. 内存安全深度防御与加解密模糊测试 (Memory Zeroization & Cryptographic Fuzzing)
-
-- **当前现状**：
-  - 核心密码学算法已在 Python 与 Rust 之间实现 100% 互通，并补充了单字节防篡改、固定向量与 UTF-8 边界测试。
-  - 面对极致安全场景（如冷启动内存 dump 分析、异常畸形 Payload 注入），尚可进一步加固。
-- **优化方案**：
-  1. **敏感内存清零机制 (Zeroize)**：
-     - 在 Rust 原生层引入 `zeroize` crate，确保主密码字符串（`password`）与 PBKDF2 派生的 32 字节对称密钥（`key`）在函数作用域结束时主动将内存重写为 0，防止敏感信息驻留交换空间或内存转储中。
-  2. **模糊测试 (Fuzz Testing)**：
-     - 引入 `cargo-fuzz` 或 `libfuzzer` 对 `decrypt()` 函数进行自动化模糊变异测试，确保面对任意损坏的字节流均能优雅返回 `Err`，绝不触发未捕获的 Panic 或内存段错误。
-  3. **大规模数据集压力测试**：
-     - 增加专项测试用例，模拟包含 5,000+ 条 API Key 的大型金库在执行“主密码修改 / 批量加密”时的重加密耗时与原子写入稳定性。
-- **涉及模块**：[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml), [`src-tauri/src/main.rs`](src-tauri/src/main.rs), [`tests/test_crypto.py`](tests/test_crypto.py)
-- **优先级**：P2（中）
+- [x] **5. 内存安全深度防御与加解密模糊测试 (Memory Zeroization & Cryptographic Fuzzing)**
+  - **完成时间**：2026-11-25
+  - **核心成果**：
+    - 在 [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) 引入 `zeroize` crate（`v1.9`），将密码学核心模块抽离至 [`src-tauri/src/crypto.rs`](src-tauri/src/crypto.rs) 并通过 [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs) 暴露；
+    - `derive_key()` 返回 `Zeroizing<[u8; 32]>`，[`src-tauri/src/main.rs`](src-tauri/src/main.rs) 中各 Tauri 命令对 `password`、`old_password`、`new_password` 及加解密中间明文 JSON 均采用 `Zeroizing<String>` 托管，并在 `decrypt()` UTF-8 解析失败时主动擦除解码缓冲区，确保敏感数据在作用域结束或异常返回时立即覆写清零；
+    - 新增 [`src-tauri/fuzz/Cargo.toml`](src-tauri/fuzz/Cargo.toml) 与 [`src-tauri/fuzz/fuzz_targets/decrypt_fuzz.rs`](src-tauri/fuzz/fuzz_targets/decrypt_fuzz.rs) 标准 `cargo-fuzz` / `libfuzzer-sys` 目标，同时在 Rust 与 Python 单元测试中内置确定性畸形输入模糊测试（边界长度、全量截断/单比特变异、合法密文包裹非法 UTF-8）与 5,200+/5,500 条 API Key 大规模金库轮换及 `0600` 原子写入稳定性压力测试，全量回归套件扩展至 22 个用例（Rust 原生 12 个用例）。
 
 ---
 
@@ -75,5 +54,5 @@
 |:---|:---:|:---|:---|:---|
 | **#2 无头环境自动探测** | ✅ 已完成 | v0.1.1 | 0.5 天 | 仅改动 `server.py`，无破坏性影响 |
 | **#3 API 错误码标准化** | ✅ 已完成 | v0.1.1 | 1 天 | 统一 Python 与 Rust 错误契约并扩充单测 |
-| **#4 Cargo 路径自适应** | 待开发 | v0.1.1 | 0.5 天 | 仅改动测试脚本 |
-| **#5 内存清零与 Fuzz** | 待开发 | v0.2.0 | 1.5 天 | 涉及 Rust 依赖添加与底层内存处理 |
+| **#4 Cargo 路径自适应** | ✅ 已完成 | v0.1.1 | 0.5 天 | 仅改动测试脚本，扩充工具链探测单测 |
+| **#5 内存清零与 Fuzz** | ✅ 已完成 | v0.2.0 | 1.5 天 | 引入 `zeroize`、`cargo-fuzz` 目标及 5,000+ 条目压测 |

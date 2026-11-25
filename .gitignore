@@ -66,6 +66,9 @@ out/
 # Rust / Tauri
 src-tauri/target/
 src-tauri/gen/
+src-tauri/fuzz/target/
+src-tauri/fuzz/corpus/
+src-tauri/fuzz/artifacts/
 Cargo.lock
 
 # Build artifacts

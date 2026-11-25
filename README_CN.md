@@ -105,7 +105,7 @@ Nutcracker 原生支持通过环境变量与 CLI 参数灵活定制存储路径�
 
 ## 🧪 自动化测试与质量保障
 
-Nutcracker 包含覆盖 17 个测试用例的全流程自动化回归套件，严格保证金融级加密安全、API 契约以及双运行时数据零锁死互通：
+Nutcracker 包含覆盖 22 个测试用例的全流程自动化回归套件，严格保证金融级加密安全、API 契约以及双运行时数据零锁死互通：
 
 ```bash
 # 执行完整统一测试套件（Python + Rust + 服务端 API）
@@ -119,6 +119,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - **零污染动态测试隔离**：测试动态探测临时空闲端口（`find_free_port()`），将金库重定向至隔离沙箱，100% 杜绝端口碰撞及对生产数据 `~/.nutcracker/vault.enc` 的任何侵入。
 - **智能无头环境探测断言**：测试 `--headless` 命令行参数与无头环境（无 DISPLAY 显示服务、CI 环境、管道/非交互 TTY）的自动识别与优雅降级控制台日志。
 - **标准化结构化错误码响应**：Python 与 Rust 端强类型镜像对齐结构化响应契约（`AUTH_FAILED`、`VAULT_CORRUPTED`、`VAULT_NOT_FOUND`、`INVALID_ARGUMENT`），彻底消除纯字符串断言失效隐患。
+- **Cargo 工具链自适应探测**：优先识别 `$CARGO_HOME/bin` 与 `PATH`，并遍历 `~/.cargo/bin`、XDG 数据目录、`asdf`/`mise` shims、Homebrew 及 `/usr/local/bin` 等跨平台路径，缺失时输出清晰 `rustup` 安装指引。
+- **内存清零、模糊测试与大规模压测**：Rust 原生层通过 `zeroize` 在作用域结束时主动擦除主密码、32 字节派生密钥与明文缓冲区；内置畸形密文模糊测试、`cargo-fuzz`  harness（`src-tauri/fuzz`）以及 5,000+ 条密钥大金库轮换与原子写入压测。
 - **高强度密码学校验**：310,000 次 PBKDF2-HMAC-SHA256 迭代、AES-256-GCM 加密完整性、防单字节篡改拦截与中文 UTF-8 边界测试。
 - **双运行时互解验证**：确保 Python 加密的金库可被 Rust 原生层秒级读取，反之亦然。
 - **金库完整生命周期**：金库创建、解锁失败拦截、凭证增删查改、主密码平滑轮换与脱敏导出。

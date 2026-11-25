@@ -112,10 +112,12 @@ python3 tests/run_all.py
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-**Key Test Coverage (17 Test Cases):**
+**Key Test Coverage (22 Test Cases):**
 - **Zero-Pollution Test Isolation**: Tests run in an isolated temporary directory with dynamic ephemeral port allocation (`find_free_port()`), guaranteeing zero collision and zero impact on your production `~/.nutcracker/vault.enc`.
 - **Intelligent Headless Auto-Detection**: Validates CLI `--headless` flag and environment auto-detection across CI, non-TTY pipes, and headless servers without graphical displays.
 - **Standardized API Error Codes**: Structured `{ ok: false, code: "...", error: "..." }` responses aligned across Python and Rust (`AUTH_FAILED`, `VAULT_CORRUPTED`, `VAULT_NOT_FOUND`, `INVALID_ARGUMENT`).
+- **Adaptive Cargo Toolchain Discovery**: Automatically locates `cargo` via `$CARGO_HOME/bin`, `PATH`, `~/.cargo/bin`, XDG data dirs, `asdf`/`mise` shims, Homebrew, and `/usr/local/bin`, with clear `rustup` install guidance when absent.
+- **Memory Zeroization, Fuzzing & Scale Stress Testing**: Rust native layer wipes master passwords, derived 32-byte keys, and plaintext buffers via `zeroize`; includes deterministic fuzz tests, a `cargo-fuzz` harness (`src-tauri/fuzz`), and 5,000+ entry vault rotation stress tests.
 - **Cryptographic Guarantees**: PBKDF2-HMAC-SHA256 (310,000 iterations), AES-256-GCM authenticated encryption, deterministic key derivation, and single-byte tampering detection.
 - **Dual-Runtime Interoperability**: Verifies 100% data compatibility between Python and Tauri Rust native backends.
 - **API Full Lifecycle**: Vault initialization, authentication, credential CRUD, master password migration, and full JSON export.
